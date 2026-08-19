@@ -179,6 +179,7 @@ Environment variables (inherited by the dsh web process):
 | TASK_TIMEOUT_MS | 300000 | default per-task timeout |
 | TASK_MAX_QUEUE | 20 | max queued tasks |
 | MAX_READ_BYTES | 65536 | text-read cap |
+| WORKSPACE_API_ROOT | (current workspace) | serve a specific folder instead of the current workspace |
 | DSH_BIN | dsh | path to the dsh CLI (defaults to PATH) |
 
 Example:
@@ -188,6 +189,31 @@ TOKEN=my-secret TASK_TIMEOUT_MS=600000 dsh web
 ```
 
 ---
+
+## Root directory selection
+
+By default the API serves the **current workspace** (the first registered workspace). You can pin it to a specific folder instead:
+
+```bash
+# Serve ONLY this folder (still keeps registered workspaces usable via ?root=)
+WORKSPACE_API_ROOT=/srv/company-docs dsh web
+```
+
+Every endpoint also accepts a per-request `?root=<path>` override. Allowed roots are:
+
+- the configured `WORKSPACE_API_ROOT` (when set), and
+- any **registered workspace** (from the DSH workspace registry).
+
+Anything else — e.g. `/etc` or arbitrary host paths — is rejected (400). The effective root is reported by `GET /` as `currentWorkspace`, and `GET /workspaces` lists `WORKSPACE_API_ROOT` first when set.
+
+```bash
+# Serve a specific folder for one request
+curl "$B/list?root=/srv/company-docs&depth=1"
+
+# Task in a specific registered workspace
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"prompt":"...","workspace":"/srv/company-docs"}' "$B/task?wait=1"
+```
 
 ## Security
 
@@ -272,5 +298,5 @@ curl -X POST -H "Content-Type: application/json" \
 ```
 
 - 端点一览：/  /workspaces  /list  /tree  /search  /read  /raw  /task
-- 环境变量：TOKEN（鉴权） TASK_TIMEOUT_MS（任务超时） DSH_BIN（dsh 路径）
+- 环境变量：TOKEN（鉴权） TASK_TIMEOUT_MS（任务超时） DSH_BIN（dsh 路径） WORKSPACE_API_ROOT（指定根目录，默认当前工作区；每请求可 ?root= 覆盖）
 - 对外提供务必配置 TOKEN；任务 agent 拥有 DSH 完整能力，仅限可信调用方
