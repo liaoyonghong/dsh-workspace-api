@@ -1,302 +1,205 @@
-# dsh-workspace-api
+# dsh-workspace-api · 企业信息查询 Agent
 
-> Expose your DeepSeek Harness workspace as an HTTP API — browse, search and read files, and let an agent answer natural-language questions about your documents. Works right on the DSH web GUI's own port (3080), no extra process needed.
+> **把企业文档变成可以对话的聊天机器人**：把合同、手册、制度、规范等文档放进一个文件夹，员工或应用系统就能用自然语言提问，AI 代理会查阅文档、给出带出处的回答。
 
-[![npm version](https://img.shields.io/npm/v/dsh-workspace-api)](https://www.npmjs.com/package/dsh-workspace-api)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](package.json)
 
 ---
 
-## Features
+## 这是什么？
 
-- **Workspace content API** — list directories, build trees, search filenames, read text files, download raw files — all as JSON over HTTP.
-- **Agent task API** — submit a natural-language task (e.g. "find how contract fee is imported in the Ams project"), and a fresh DSH headless agent searches your workspace and returns the answer with sources.
-- **Same port as the GUI** — routes mount on the running web server as /workspace-api/*; nothing extra to install or daemonize.
-- **Workspace-gated** — every path is realpath-checked against the registered workspace roots; path traversal is rejected.
-- **CORS-enabled, token-ready** — call from browser or CLI; optional TOKEN bearer auth for untrusted networks.
-- **Zero runtime dependencies** — plain Node built-ins (the dsh CLI does the heavy lifting).
+一个**开箱即用的企业知识问答机器人**。不需要建索引、不需要向量库、不需要写代码——
+
+1. **放文档**：把企业文档（合同、员工手册、报销制度、IT 规范、产品资料……）放进指定文件夹
+2. **提问**：员工或内部系统用自然语言提问，例如「年假怎么算？」「酒店报销上限多少？」
+3. **回答**：AI 代理现场查阅你的文档，给出准确回答，并**注明出处**（哪个文件、哪一行）
+
+适用于：内部知识库问答、合同条款查询、制度答疑、系统操作说明、入职培训辅助等场景。
 
 ---
 
-## Installation
+## 普通用户怎么用
 
-Install into your DSH profile:
+### 方式一：直接在 DSH 聊天界面问
+
+在 DSH Web 界面直接提问即可，例如：
+
+> 「根据企业文档，员工的年假政策是什么？」
+
+### 方式二：通过内部应用 / 聊天界面 / 网页机器人问
+
+企业系统、办公软件、网页聊天框都可以接入。对使用方来说，就是一个「问一句、答一句」的对话接口：
+
+```bash
+# 问一个问题（等待回答）
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"prompt":"根据企业文档，酒店住宿报销上限是多少？"}' \
+  "http://127.0.0.1:3080/workspace-api/task?wait=1"
+```
+
+返回示例：
+
+```json
+{
+  "ok": true,
+  "task": {
+    "status": "done",
+    "result": "酒店报销上限：标准间每晚上限 HK$1200（出处：报销政策.md 第 3 行）",
+    "exitCode": 0
+  }
+}
+```
+
+### 典型问答效果（实测）
+
+放 3 份示例文档，10 秒内返回：
+
+| 提问 | 回答 |
+|---|---|
+| 员工的年假政策是什么？ | 入职满一年 12 天，之后每年 +1，上限 20 天（出处：员工手册.txt） |
+| 酒店住宿报销上限？ | 标准间每晚上限 HK$1200（出处：报销政策.md 第 3 行） |
+| 密码多久更换一次？ | 每 90 天更换，至少 12 位（出处：IT安全规范.txt 第 2 行） |
+
+---
+
+## 管理员怎么部署
+
+### 安装
 
 ```bash
 dsh plugin --profile web add dsh-workspace-api
 ```
 
-Then restart `dsh web`. The API is live at:
+重启 `dsh web` 后即生效。
 
-```
-http://127.0.0.1:3080/workspace-api/
-```
+### 指定企业文档目录
 
-### From GitHub (pre-npm)
+默认使用 DSH 当前工作区；推荐专门指定一个文档目录：
 
 ```bash
-dsh plugin --profile web add github:<owner>/dsh-workspace-api
-```
-
-### Local development
-
-```bash
-dsh plugin --profile web add link:/path/to/dsh-workspace-api
-```
-
----
-
-## Quick start
-
-```bash
-B="http://127.0.0.1:3080/workspace-api"
-
-# Service info & registered workspaces
-curl "$B/"
-
-# List a directory
-curl "$B/list?path=projects&depth=1"
-
-# Search filenames
-curl "$B/search?q=contract&path=projects/Ams"
-
-# Read a text file (JSON)
-curl "$B/read?path=README.md"
-
-# Read as plain text
-curl "$B/read?path=README.md&format=text"
-
-# Ask the agent a question about your documents (synchronous)
-curl -X POST -H "Content-Type: application/json" \
-  -d '{"prompt":"Based on the docs in projects/企业文档-demo, what is the annual leave policy?","timeoutMs":180000}' \
-  "$B/task?wait=1"
-```
-
----
-
-## API reference
-
-All responses use the envelope `{"ok": true, "data": ...}` / `{"ok": false, "error": "..."}`.
-All endpoints accept `GET`; `/task` also accepts `POST`. CORS headers are included on every response.
-
-### GET /  · GET /healthz
-
-Service info, current workspace, registered workspace list, and task-API availability.
-
-### GET /workspaces
-
-The registered workspaces (from DSH's workspaceRegistry — dynamic, not a config file).
-
-### GET /list
-
-List one directory level.
-
-| param | default | notes |
-|---|---|---|
-| path | . | relative to the workspace root |
-| depth | 1 | reserved for future use (max 8) |
-
-Response entries: {name, type: dir|file|link, size?, mtime}.
-
-### GET /tree
-
-Nested directory tree. path (default .), depth (default 3, max 8).
-
-### GET /search
-
-Filename substring search (case-insensitive, skips node_modules/.git/etc).
-
-| param | default | notes |
-|---|---|---|
-| q | — | required |
-| path | . | search root |
-| limit | 200 | max 500 |
-
-### GET /read
-
-Read a file's text content (auto-detects binary; capped).
-
-| param | default | notes |
-|---|---|---|
-| path | — | required, relative |
-| maxBytes | 65536 | max 1048576 |
-| format=text | — | returns text/plain instead of JSON |
-
-Binary files return {binary: true, size, sha256, hint}.
-
-### GET /raw
-
-Stream the raw bytes of a file. path (required), optional mime.
-
-### POST /task — agent tasks
-
-Ask a DSH headless agent to do work in the workspace (search code, answer questions about documents, etc.).
-
-Request body (JSON):
-
-| field | required | notes |
-|---|---|---|
-| prompt | yes | the natural-language task |
-| workspace | — | must be a registered workspace; defaults to the current one |
-| timeoutMs | — | 30s – 30min; default TASK_TIMEOUT_MS (300s) |
-
-**Async** — returns immediately with a task id:
-
-```bash
-curl -X POST -H "Content-Type: application/json" \
-  -d '{"prompt":"Find how contract fee is imported in projects/Ams"}' \
-  "$B/task"
-# {"ok":true,"taskId":"...","status":"queued"}
-```
-
-**Poll** the result:
-
-```bash
-curl "$B/task/<taskId>"
-# {"ok":true,"task":{"status":"done","result":"...","exitCode":0,"error":""}}
-```
-
-**Synchronous** — block until the agent finishes (?wait=1):
-
-```bash
-curl -X POST -H "Content-Type: application/json" \
-  -d '{"prompt":"1+1=?","timeoutMs":120000}' \
-  "$B/task?wait=1"
-```
-
-> Tasks run in a FIFO queue (single worker). Simple questions answer in ~3–5s; code-search/document-QA tasks typically take 1–3 minutes.
-
----
-
-## Configuration
-
-Environment variables (inherited by the dsh web process):
-
-| variable | default | description |
-|---|---|---|
-| TOKEN | (empty) | when set, require Authorization: Bearer <token> or ?token=<token> |
-| TASK_TIMEOUT_MS | 300000 | default per-task timeout |
-| TASK_MAX_QUEUE | 20 | max queued tasks |
-| MAX_READ_BYTES | 65536 | text-read cap |
-| WORKSPACE_API_ROOT | (current workspace) | serve a specific folder instead of the current workspace |
-| DSH_BIN | dsh | path to the dsh CLI (defaults to PATH) |
-
-Example:
-
-```bash
-TOKEN=my-secret TASK_TIMEOUT_MS=600000 dsh web
-```
-
----
-
-## Root directory selection
-
-By default the API serves the **current workspace** (the first registered workspace). You can pin it to a specific folder instead:
-
-```bash
-# Serve ONLY this folder (still keeps registered workspaces usable via ?root=)
+# 把企业文档目录设为机器人查询范围
 WORKSPACE_API_ROOT=/srv/company-docs dsh web
 ```
 
-Every endpoint also accepts a per-request `?root=<path>` override. Allowed roots are:
+> 把合同、手册等文档放到这个目录（支持 txt / md / PDF / Word / Excel），员工就能向机器人提问了。
+> 扫描版 PDF 需先转成文字（OCR），AI 才能检索。
 
-- the configured `WORKSPACE_API_ROOT` (when set), and
-- any **registered workspace** (from the DSH workspace registry).
-
-Anything else — e.g. `/etc` or arbitrary host paths — is rejected (400). The effective root is reported by `GET /` as `currentWorkspace`, and `GET /workspaces` lists `WORKSPACE_API_ROOT` first when set.
+### 对外提供服务
 
 ```bash
-# Serve a specific folder for one request
-curl "$B/list?root=/srv/company-docs&depth=1"
+# 加上访问令牌，防止未授权使用（推荐）
+TOKEN=your-secret-token dsh web
+```
 
-# Task in a specific registered workspace
+调用方需带令牌：
+
+```bash
+curl -H "Authorization: Bearer your-secret-token" \
+  "http://127.0.0.1:3080/workspace-api/task?wait=1" \
+  -d '{"prompt":"..."}'
+```
+
+---
+
+## 面向开发者：API 参考
+
+服务运行在 DSH 同端口（默认 127.0.0.1:3080），前缀 `/workspace-api`。
+所有响应统一为 `{"ok": true, "data": ...}` / `{"ok": false, "error": ...}`；已开启 CORS。
+
+### 常用端点
+
+| 端点 | 用途 |
+|---|---|
+| `GET /` · `/healthz` | 服务状态、当前查询目录 |
+| `GET /workspaces` | 可查询的目录列表 |
+| `GET /list?path=&depth=` | 列出目录内容 |
+| `GET /tree?path=.&depth=3` | 目录树 |
+| `GET /search?q=` | 按文件名搜索 |
+| `GET /read?path=&format=text` | 读取文件内容 |
+| `GET /raw?path=` | 下载原始文件 |
+| `POST /task` | **提交自然语言问题，AI 代理处理** |
+| `GET /task/<id>` | 查询任务结果 |
+
+### 提问接口（核心）
+
+```bash
+# 异步提交：立即返回任务号
 curl -X POST -H "Content-Type: application/json" \
-  -d '{"prompt":"...","workspace":"/srv/company-docs"}' "$B/task?wait=1"
+  -d '{"prompt":"在 projects/Ams 里找导入 contract fee 的方法","timeoutMs":600000}' \
+  "http://127.0.0.1:3080/workspace-api/task"
+# → {"ok":true,"taskId":"...","status":"queued"}
+
+# 轮询结果
+curl "http://127.0.0.1:3080/workspace-api/task/<taskId>"
+
+# 或同步等待（?wait=1）
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"prompt":"1+1=?","timeoutMs":120000}' \
+  "http://127.0.0.1:3080/workspace-api/task?wait=1"
 ```
 
-## Security
+请求体字段：
 
-- The web server binds 127.0.0.1 by default; a 0.0.0.0 bind is a deliberate network exposure.
-- **Path guard**: every requested path is canonicalized (realpath) and must resolve inside a registered workspace — traversal like ../../etc is rejected.
-- **Task agents have full DSH capabilities.** Only expose the API to trusted callers; **always set TOKEN** when serving beyond localhost.
-- Text reads are size-capped; binary sniffing avoids leaking huge blobs.
+| 字段 | 必填 | 说明 |
+|---|---|---|
+| `prompt` | ✅ | 自然语言问题/任务 |
+| `workspace` | — | 指定查询目录（须为已注册工作区或 `WORKSPACE_API_ROOT`） |
+| `timeoutMs` | — | 超时（30s–30min，默认 300s） |
+
+> 简单问答约 3–5 秒；代码检索/文档问答通常 1–3 分钟。任务按队列顺序执行（单并发）。
+
+### 配置项
+
+| 环境变量 | 默认 | 说明 |
+|---|---|---|
+| `WORKSPACE_API_ROOT` | 当前工作区 | 机器人查询的文档根目录 |
+| `TOKEN` | 无 | 访问令牌（Bearer 或 `?token=`），建议对外必配 |
+| `TASK_TIMEOUT_MS` | 300000 | 单任务超时 |
+| `TASK_MAX_QUEUE` | 20 | 队列上限 |
+| `MAX_READ_BYTES` | 65536 | 文本读取上限 |
+| `DSH_BIN` | `dsh` | dsh 命令路径 |
 
 ---
 
-## How it works
+## 安全说明
 
-dsh-workspace-api is a Cordis "bare plugin" (exports {apply, inject}) that:
-
-1. Injects webServer, workspaceRegistry and systemPrompt;
-2. Registers the /workspace-api prefix route on the shared web server;
-3. Uses the workspace registry for the gate and for the live workspace list;
-4. For tasks, spawns "dsh --profile headless <prompt>" (cwd = workspace), captures the final answer, and returns it.
-
-```
-Client app --HTTP--> /workspace-api/*   (same port as the GUI)
-                        | POST /task (FIFO queue, single worker)
-                        v
-               dsh --profile headless "<prompt>"   (fresh agent, cwd = workspace)
-                        v
-               {"status":"done","result":"...","exitCode":0}
-```
+- 默认仅监听 127.0.0.1；对外开放请务必配置 `TOKEN`
+- 所有路径经真实路径校验，只能访问 `WORKSPACE_API_ROOT` 或已注册工作区，`../../etc` 之类一律拒绝
+- 任务代理拥有 DSH 完整文件能力，仅限可信调用方使用
 
 ---
 
-## Development & publishing
+## 工作原理（简述）
+
+```
+员工 / 应用系统 ──自然语言问题──▶ /workspace-api/task
+                                    │ 队列（单并发）
+                                    ▼
+                      dsh --profile headless "问题"（全新 AI 代理，工作区=文档目录）
+                                    │ 现场搜索 + 阅读文档
+                                    ▼
+                    {"status":"done","result":"带出处的回答"}
+```
+
+- 基于 **AI 代理现场检索**，无需预建索引；文档少（几十份内）效果最佳
+- 每次提问是全新会话，无跨问题记忆
+- 超大语料（上千份、文件名混乱）建议叠加 RAG 向量检索
+
+---
+
+## 开发与发布
 
 ```bash
-# Syntax check
-node --check lib/index.js
-
-# Local install for testing
-dsh plugin --profile web add link:$PWD
-
-# Publish to npm
-npm login
-npm publish
-
-# Bump a patch release
-npm version patch && npm publish
+node --check lib/index.js                # 语法检查
+dsh plugin --profile web add link:$PWD   # 本地调试安装
+npm login && npm publish                 # 发布到 npm
 ```
 
-**Contributing to the ecosystem** — after pushing to GitHub, add the topics:
-
-- dsh-plugin
-- deepseek-harness
-
-Community marketplaces (Oh-My-DSH, dsh-plugins-store, awesome-dsh-plugin, ...) auto-discover repos with the dsh-plugin topic.
-
----
-
-## Limitations
-
-- **Search-based, not embedding-based**: the agent locates answers by searching/reading files. Great for tens to low hundreds of documents; for very large corpora with cryptic filenames, consider adding a RAG/vector layer.
-- **One task at a time** (FIFO queue).
-- Each task is a **fresh agent session** — no conversation memory across calls.
-- Scanned PDFs / image-only documents need OCR before they are searchable.
+推送到 GitHub 后请添加 topic：`dsh-plugin`、`deepseek-harness`（社区市场会自动收录）。
 
 ---
 
 ## License
 
 MIT
-
----
-
-## 中文快速上手
-
-把企业文档放进工作区（如 ~/Documents 下任意子目录），用户即可通过 GUI 或任务 API 提问：
-
-```bash
-B="http://127.0.0.1:3080/workspace-api"
-# 提交任务并等待结果
-curl -X POST -H "Content-Type: application/json" \
-  -d '{"prompt":"根据企业文档，酒店住宿报销上限是多少？","timeoutMs":180000}' \
-  "$B/task?wait=1"
-```
-
-- 端点一览：/  /workspaces  /list  /tree  /search  /read  /raw  /task
-- 环境变量：TOKEN（鉴权） TASK_TIMEOUT_MS（任务超时） DSH_BIN（dsh 路径） WORKSPACE_API_ROOT（指定根目录，默认当前工作区；每请求可 ?root= 覆盖）
-- 对外提供务必配置 TOKEN；任务 agent 拥有 DSH 完整能力，仅限可信调用方
