@@ -1,6 +1,6 @@
 {
   "name": "dsh-workspace-api",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "DSH 插件：把 workspace 内容与 DSH agent 任务能力暴露为 HTTP API（/workspace-api/*），其他程序可查询目录、搜索文件、提交自然语言任务给 agent 处理。",
   "type": "module",
   "main": "lib/index.js",
