@@ -27,11 +27,19 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/<你的用户名>/dsh-workspace-api.git"
+    "url": "git+https://github.com/liaoyonghong/dsh-workspace-api.git"
   },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
     }
+  },
+  "homepage": "https://github.com/liaoyonghong/dsh-workspace-api#readme",
+  "bugs": {
+    "url": "https://github.com/liaoyonghong/dsh-workspace-api/issues"
+  },
+  "author": {
+    "name": "liaoyonghong",
+    "url": "https://github.com/liaoyonghong"
   }
 }
