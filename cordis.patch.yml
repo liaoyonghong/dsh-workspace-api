@@ -1,0 +1,6 @@
+# dsh-workspace-api bundle patch: inserts the host-only plugin row.
+# 安装: dsh plugin --profile web add link:~/.dsh/plugins/dsh-workspace-api
+# 端点: GET/POST http://127.0.0.1:3080/workspace-api/* （与 GUI 同端口）
+- insert:
+    - id: dsh-workspace-api
+      name: dsh-workspace-api
